@@ -1,0 +1,47 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: heads-up
+  labels:
+    app: heads-up
+spec:
+  # Keep at 1. The scheduler runs in-process, so a second replica would double-poll.
+  # Splitting the poller into its own Deployment is the fix when you need HA.
+  replicas: 1
+  selector:
+    matchLabels:
+      app: heads-up
+  template:
+    metadata:
+      labels:
+        app: heads-up
+    spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001
+      containers:
+        - name: api
+          image: ghcr.io/MrJeanDidIt/heads-up:latest
+          ports:
+            - containerPort: 8000
+          envFrom:
+            - secretRef:
+                name: heads-up-secrets
+          resources:
+            requests:
+              cpu: 50m
+              memory: 128Mi
+            limits:
+              memory: 256Mi
+          livenessProbe:
+            httpGet:
+              path: /healthz
+              port: 8000
+            initialDelaySeconds: 10
+            periodSeconds: 30
+          readinessProbe:
+            httpGet:
+              path: /readyz
+              port: 8000
+            initialDelaySeconds: 5
+            periodSeconds: 10
