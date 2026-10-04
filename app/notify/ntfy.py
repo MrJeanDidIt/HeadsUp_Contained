@@ -3,40 +3,46 @@ import httpx
 from app.config import Settings
 from app.notify.base import Notification, Notifier
 
+MAX_ACTIONS = 3
+
 
 class NtfyNotifier(Notifier):
-    """Publishes to an ntfy topic.
-
-    Start with a public ntfy.sh topic using a long random name — treat the topic
-    name as the secret. Move to a self-hosted instance on the cluster once the
-    pipeline is stable; only the base URL changes.
-    """
-
     def __init__(self, settings: Settings, client: httpx.AsyncClient | None = None) -> None:
         self._settings = settings
         self._client = client
+
+    def payload(self, notification: Notification) -> dict:
+        body: dict = {
+            "topic": self._settings.ntfy_topic,
+            "title": notification.title,
+            "message": notification.message,
+            "priority": notification.priority,
+        }
+        if notification.tags:
+            body["tags"] = notification.tags
+        if notification.url:
+            body["click"] = notification.url
+        if notification.actions:
+            body["actions"] = [
+                {"action": "view", "label": action.label, "url": action.url, "clear": True}
+                for action in notification.actions[:MAX_ACTIONS]
+            ]
+        return body
 
     async def send(self, notification: Notification) -> None:
         if not self._settings.ntfy_topic:
             raise RuntimeError("ntfy_topic is not configured")
 
-        headers = {
-            "Title": notification.title,
-            "Priority": str(notification.priority),
-        }
-        if notification.tags:
-            headers["Tags"] = ",".join(notification.tags)
-        if notification.url:
-            headers["Click"] = notification.url
+        headers = {}
         if self._settings.ntfy_token:
             headers["Authorization"] = f"Bearer {self._settings.ntfy_token}"
-
-        url = f"{self._settings.ntfy_base_url}/{self._settings.ntfy_topic}"
 
         client = self._client or httpx.AsyncClient(timeout=10.0)
         try:
             response = await client.post(
-                url, content=notification.message.encode("utf-8"), headers=headers
+                self._settings.ntfy_base_url.rstrip("/"),
+                json=self.payload(notification),
+                headers=headers,
             )
             response.raise_for_status()
         finally:

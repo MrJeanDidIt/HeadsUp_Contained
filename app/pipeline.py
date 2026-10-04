@@ -12,9 +12,10 @@ from sqlalchemy import select
 from sqlalchemy.exc import IntegrityError
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.config import Settings
+from app.config import Settings, get_settings
 from app.models import Item, Notification as NotificationRow, Rule
 from app.notify.base import Notification, Notifier
+from app.notify.format import new_item_notification, reminder_notification
 from app.rules.defaults import DEFAULT_RULES
 from app.rules.engine import ensure_utc, score_item
 from app.sources.base import RawItem, Source
@@ -41,7 +42,7 @@ async def seed_rules(session: AsyncSession) -> int:
     return len(DEFAULT_RULES)
 
 
-async def _upsert(session: AsyncSession, raw: RawItem) -> tuple[Item, bool]:
+async def upsert_item(session: AsyncSession, raw: RawItem) -> tuple[Item, bool]:
     """Returns (item, created). Deduplication is the DB's job, not ours."""
     stmt = select(Item).where(Item.source == raw.source, Item.external_id == raw.external_id)
     item = await session.scalar(stmt)
@@ -72,7 +73,7 @@ async def _upsert(session: AsyncSession, raw: RawItem) -> tuple[Item, bool]:
     except IntegrityError:
         # Another replica inserted it between our select and flush.
         await session.rollback()
-        return await _upsert(session, raw)
+        return await upsert_item(session, raw)
     return item, True
 
 
@@ -124,7 +125,7 @@ async def run_pipeline(
         report.fetched += len(raw_items)
 
         for raw in raw_items:
-            item, created = await _upsert(session, raw)
+            item, created = await upsert_item(session, raw)
             result = score_item(item, rules, now=now)
             item.score = result.score
 
@@ -134,13 +135,7 @@ async def run_pipeline(
                     notifier,
                     item,
                     "new",
-                    Notification(
-                        title=item.context or item.source.title(),
-                        message=f"{item.title}\n{' · '.join(result.reasons)}",
-                        url=item.url,
-                        priority=4 if result.score >= settings.score_threshold * 2 else 3,
-                        tags=["mailbox" if item.kind == "mail" else "books"],
-                    ),
+                    new_item_notification(item, result, settings, now),
                 )
                 report.notified += int(sent)
 
@@ -154,9 +149,11 @@ async def run_due_reminders(
     session: AsyncSession,
     notifier: Notifier,
     now: datetime | None = None,
+    settings: Settings | None = None,
 ) -> int:
     """Fires T-48h and T-2h reminders for anything not yet past due."""
     now = ensure_utc(now) or datetime.now(UTC)
+    settings = settings or get_settings()
     sent = 0
 
     items = list(await session.scalars(select(Item).where(Item.due_at.is_not(None))))
@@ -175,13 +172,7 @@ async def run_due_reminders(
                 notifier,
                 item,
                 stage,
-                Notification(
-                    title=f"Due in {int(hours)}h — {item.context or 'Reminder'}",
-                    message=item.title,
-                    url=item.url,
-                    priority=5 if stage == "due_2h" else 4,
-                    tags=["alarm_clock"],
-                ),
+                reminder_notification(item, stage, settings, now),
             )
             sent += int(ok)
             break  # only the tightest applicable stage

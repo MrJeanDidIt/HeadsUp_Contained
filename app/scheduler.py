@@ -35,12 +35,12 @@ async def poll_job(settings: Settings) -> None:
 
 async def reminder_job(settings: Settings) -> None:
     async with get_sessionmaker()() as session:
-        sent = await run_due_reminders(session, NtfyNotifier(settings))
+        sent = await run_due_reminders(session, NtfyNotifier(settings), settings=settings)
         logger.info("reminders sent: %s", sent)
 
 
 def build_scheduler(settings: Settings) -> AsyncIOScheduler:
-    scheduler = AsyncIOScheduler(timezone="America/New_York")
+    scheduler = AsyncIOScheduler(timezone=settings.timezone)
     scheduler.add_job(
         poll_job,
         "interval",

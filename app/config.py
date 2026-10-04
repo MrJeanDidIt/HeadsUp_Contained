@@ -11,6 +11,8 @@ class Settings(BaseSettings):
     debug: bool = False
     database_url: str = "postgresql+asyncpg://headsup:headsup@localhost:5432/headsup"
     redis_url: str = "redis://localhost:6379/0"
+    public_base_url: str = "http://localhost:8000"
+    timezone: str = "America/New_York"
 
     # --- auth ---------------------------------------------------------------
     # Set auth_disabled=true only for local development. main.py refuses to start

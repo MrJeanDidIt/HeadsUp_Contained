@@ -6,7 +6,7 @@ from fastapi import FastAPI
 from app.config import get_settings
 from app.db import Base, get_engine, get_sessionmaker
 from app.pipeline import seed_rules
-from app.routers import health, items, rules
+from app.routers import dashboard, dev, health, items, rules
 from app.scheduler import build_scheduler
 
 logging.basicConfig(level=logging.INFO)
@@ -49,3 +49,5 @@ app = FastAPI(
 app.include_router(health.router)
 app.include_router(items.router)
 app.include_router(rules.router)
+app.include_router(dashboard.router)
+app.include_router(dev.router)

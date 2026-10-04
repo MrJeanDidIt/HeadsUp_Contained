@@ -37,6 +37,7 @@ so a failed push is skipped rather than retried forever at 2am.
 
 | Method | Path | Purpose |
 |---|---|---|
+| GET | `/ui` | Dashboard: next deadline, due this week, everything else |
 | GET | `/healthz` | Liveness — no dependency checks |
 | GET | `/readyz` | Readiness — verifies the database |
 | GET | `/items` | Everything ingested, filterable by source, kind, score |
@@ -46,6 +47,21 @@ so a failed push is skipped rather than retried forever at 2am.
 | DELETE | `/rules/{id}` | Remove a rule |
 
 Interactive docs at `/docs`.
+
+## Dashboard and notifications
+
+`/ui` is a server-rendered dashboard. The top shows the next deadline. Below it, items due
+in the next 7 days are sorted by due date, and everything else by score. Each row shows
+which rules fired, so the score is never a mystery, and links straight to the item in
+Canvas, Outlook, or Gmail. Rows have stable anchors (`/ui#item-42`).
+
+Notifications are published to ntfy as JSON, so titles keep their formatting. Each one
+carries two buttons: open the item at its source, or jump to its row on the dashboard.
+Set `PUBLIC_BASE_URL` to wherever the dashboard is reachable (for example a Tailscale
+address) so the dashboard button works from your phone.
+
+With `DEBUG=true`, a dev toolbar on the dashboard can add demo items, send a test
+notification, and remove the demo items again. The `/dev` routes return 404 otherwise.
 
 ## Local setup
 
